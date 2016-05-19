@@ -1,9 +1,16 @@
+package my_linked_list;
+
+import converter.Converter;
+
+import java.util.ConcurrentModificationException;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 /**
  * Created by Mayer Roman on 05.05.2016.
  */
-public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
+public class MyLinkedList<T extends Comparable<T>> implements Iterable<T>, TwoWayIterable<T> {
+    private int modCount = 0;
     private int size = 0;
     private Node<T> firstNode;
     private Node<T> lastNode;
@@ -19,45 +26,45 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
             firstNode.prev = newNode;
             lastNode = newNode;
         }
+        modCount++;
         size++;
     }
 
     public void add(int elementIndex, T element) {
         if (elementIndex < 0 || elementIndex > size) {
-            return;
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(elementIndex));
         }
 
-        Node<T> newElement = new Node<T>(element);
+        Node<T> newNode = new Node<T>(element);
 
         if (size == 0) {
-            firstNode = newElement;
-            lastNode = newElement;
-        }
-
-        else {
-            Node<T> nextElement = findNode(elementIndex);
-            Node<T> prevElement = nextElement.prev;;
+            firstNode = newNode;
+            lastNode = newNode;
+        } else {
+            Node<T> nextNode = findNode(elementIndex);
+            Node<T> prevNode = nextNode.prev;
 
 
-            newElement.next = nextElement;
-            newElement.prev = prevElement;
-            prevElement.next = newElement;
-            nextElement.prev = newElement;
+            newNode.next = nextNode;
+            newNode.prev = prevNode;
+            prevNode.next = newNode;
+            nextNode.prev = newNode;
 
             if (elementIndex == 0) {
-                firstNode = newElement;
+                firstNode = newNode;
             }
             if (elementIndex == size) {
-                lastNode = newElement;
+                lastNode = newNode;
             }
         }
 
+        modCount++;
         size++;
     }
 
     public T get(int elementIndex) {
         if (elementIndex < 0 || elementIndex >= size) {
-            return null;
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(elementIndex));
         }
 
         return findNode(elementIndex).element;
@@ -65,16 +72,14 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
 
     public void remove(int elementIndex) {
         if (elementIndex < 0 || elementIndex >= size) {
-            return;
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(elementIndex));
         }
 
         if (size == 1) {
             unlinkNode(firstNode);
             firstNode = null;
             lastNode = null;
-        }
-
-        else {
+        } else {
             Node<T> deletedNode = findNode(elementIndex);
 
             Node<T> prevNode = deletedNode.prev;
@@ -92,6 +97,7 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
             }
         }
 
+        modCount++;
         size--;
     }
 
@@ -113,9 +119,7 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
                 tempNode = tempNode.next;
             }
             return tempNode;
-        }
-
-        else {
+        } else {
             tempNode = lastNode;
             for (int i = size - 1; i > nodeIndex; i--) {
                 tempNode = tempNode.prev;
@@ -124,6 +128,9 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
         }
     }
 
+    private String outOfBoundsMsg(int index) {
+        return "Index: " + index + ", Size: " + size;
+    }
 
 
     public int size() {
@@ -131,8 +138,6 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
     }
 
     public void sort() {
-        firstNode.element.compareTo(lastNode.element);
-
         if (size == 0) {
             return;
         }
@@ -185,13 +190,21 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
         }
     }
 
+    public <OUT extends Comparable<OUT>> MyLinkedList<OUT> map(Converter<T, OUT> converter) {
+        MyLinkedList<OUT> newList = new MyLinkedList<OUT>();
+        for (T elementFromThisList : this) {
+            newList.add(converter.apply(elementFromThisList));
+        }
+        return newList;
+    }
 
-    public TwoWayIteratorImpl getIterator() {
+
+    public TwoWayIterator<T> twoWayIterator() {
         return new TwoWayIteratorImpl(firstNode, size);
     }
 
     public Iterator<T> iterator() {
-        return new OneWayIterator(firstNode, size);
+        return new OneWayIterator(firstNode, size, modCount);
     }
 
 
@@ -211,9 +224,10 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
         }
     }
 
-    private class TwoWayIteratorImpl implements TwoWayIterator {
+    private class TwoWayIteratorImpl implements TwoWayIterator<T> {
         private Node<T> position;
 
+        private int expectedNumberOfModifications;
         private int counter = 0;
         private int listSize;
 
@@ -223,22 +237,17 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
         }
 
         public boolean hasPrev() {
-            if (counter > 1) {
-                return true;
-            }
-            return false;
+            return counter > 1;
         }
 
         public boolean hasNext() {
-            if (counter < listSize) {
-                return true;
-            }
-            return false;
+            return counter < listSize;
         }
 
         public T getPrev() {
+            checkForModification();
             if (counter == 1) {
-                return null;
+                throw new NoSuchElementException();
             }
             position = position.prev;
             counter--;
@@ -246,37 +255,48 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
         }
 
         public T getNext() {
+            checkForModification();
             if (counter == 0) {
                 counter++;
                 return position.element;
             }
             if (counter == listSize) {
-                return null;
+                throw new NoSuchElementException();
             }
             position = position.next;
             counter++;
             return position.element;
         }
+
+        private void checkForModification() {
+            if (expectedNumberOfModifications != modCount)
+                throw new ConcurrentModificationException();
+        }
     }
 
     private class OneWayIterator implements Iterator<T> {
         private Node<T> position;
+        private int expectedNumberOfModifications;
         private int counter = 0;
         private int listSize;
 
-        OneWayIterator(Node<T> firstElement, int listSize) {
+        OneWayIterator(Node<T> firstElement, int listSize, int modCount) {
             position = firstElement;
             this.listSize = listSize;
+            this.expectedNumberOfModifications = modCount;
         }
 
         public boolean hasNext() {
-            if (counter < listSize) {
-                return true;
+            if (expectedNumberOfModifications != modCount) {
+                throw new ConcurrentModificationException();
             }
-            return false;
+            return counter < listSize;
         }
 
         public T next() {
+            if (expectedNumberOfModifications != modCount) {
+                throw new ConcurrentModificationException();
+            }
             if (counter == 0) {
                 counter++;
                 return position.element;
@@ -286,7 +306,7 @@ public class MyLinkedList <T extends Comparable<T>> implements Iterable<T> {
                 counter++;
                 return position.element;
             }
-            return null;
+            throw new NoSuchElementException();
         }
     }
 }
